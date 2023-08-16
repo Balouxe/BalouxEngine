@@ -1,0 +1,18 @@
+﻿  Analyse des sources à la recherche des dépendances de module...
+  Board.cpp
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(200,28): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(201,28): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(202,28): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(254,29): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(255,29): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+F:\Dev\Projets\BalouxEngine\BalouxEngine\src\Board.cpp(256,29): warning C4805: '==' : mélange risqué de type 'const int' et de type 'bool' dans l'opération
+  EntryPoint.cpp
+  Hash.cpp
+  MoveGenerator.cpp
+  Perft.cpp
+  Génération de code en cours
+  10 of 265 functions ( 3.8%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    7 functions had inline decision re-evaluated but remain unchanged
+  Fin de la génération du code
+  BalouxEngine.vcxproj -> F:\Dev\Projets\BalouxEngine\BalouxEngine\x64\Release\BalouxEngine.exe
