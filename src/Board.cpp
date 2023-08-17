@@ -8,12 +8,14 @@ constexpr char SideChar[] = "wb-";
 constexpr char RankChar[] = "12345678";
 constexpr char FileChar[] = "abcdefgh";
 
-const int KnightDir[8] = { -8, -19, -21, 12, 8, 19, 21, 12 };
+const int KnightDir[8] = { -8, -19,	-21, -12, 8, 19, 21, 12 };
 const int RookDir[4] = { -1, -10, 1, 10 };
 const int BishopDir[4] = { -9, -11, 9, 11 };
 const int KingDir[8] = { -1, -10, 1, 10, -9, -11, 9, 11 };
 
 namespace BalouxEngine {
+
+	Board::Board() : pvTable(PVTable(this)) {}
 
 	void Board::ResetBoard() {
 		int i = 0;
@@ -517,7 +519,6 @@ namespace BalouxEngine {
 	}
 
 	bool Board::MakeMove(int move) {
-		std::cout << "Made move : " << Utils::MoveToString(move) << "\n";
 
 		assert(CheckBoard());
 
@@ -632,7 +633,6 @@ namespace BalouxEngine {
 	}
 
 	void Board::TakeMove() {
-		std::cout << "Took move back.\n";
 
 		assert(CheckBoard());
 

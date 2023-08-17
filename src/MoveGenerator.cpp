@@ -33,27 +33,83 @@ constexpr int NumDir[13] = {
  0, 0, 8, 4, 4, 8, 8, 0, 8, 4, 4, 8, 8
 };
 
+// MvvLVA
+constexpr int VictimScore[13] = { 0, 100, 200, 300, 400, 500, 600, 100, 200, 300, 400, 500, 600 };
+
 namespace BalouxEngine {
+
+	int MoveGenerator::MvvLVAScores[13][13];
 
 	MoveGenerator::MoveGenerator(Board* board) : m_board(board) {
 		m_moveList = new MoveList();
 	}
 
+	MoveGenerator::~MoveGenerator() {
+		delete m_moveList;
+	}
+
+	void MoveGenerator::InitMvvLva() {
+		int Attacker;
+		int Victim;
+		for (Attacker = WhitePawn; Attacker <= BlackKing; ++Attacker) {
+			for (Victim = WhitePawn; Victim <= BlackKing; ++Victim) {
+				MvvLVAScores[Victim][Attacker] = VictimScore[Victim] + 6 - (VictimScore[Attacker] / 100);
+			}
+		}
+	}
+
+	bool MoveGenerator::MoveExists(const int move) {
+		GenerateAllMoves();
+
+		int moveNum;
+		for (moveNum = 0; moveNum < m_moveList->count; ++moveNum) {
+			if (!m_board->MakeMove(m_moveList->moves[moveNum].move)) {
+				continue;
+			}
+			m_board->TakeMove();
+			if (m_moveList->moves[moveNum].move == move) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+
 	void MoveGenerator::AddQuietMove(int move) {
+		assert(Utils::SquareOnBoard(FROM(move)));
+		assert(Utils::SquareOnBoard(TO(move)));
+
 		m_moveList->moves[m_moveList->count].move = move;
-		m_moveList->moves[m_moveList->count].score = 0;
+
+		if (m_board->searchKillers[0][m_board->ply] == move) {
+			m_moveList->moves[m_moveList->count].score = 900000;
+		}
+		else if(m_board->searchKillers[1][m_board->ply] == move) {
+			m_moveList->moves[m_moveList->count].score = 800000;
+		}
+		else {
+			m_moveList->moves[m_moveList->count].score = m_board->searchHistory[m_board->pieces[FROM(move)]][TO(move)];
+		}
+
 		m_moveList->count++;
 	}
 
 	void MoveGenerator::AddCaptureMove(int move) {
+		assert(Utils::SquareOnBoard(FROM(move)));
+		assert(Utils::SquareOnBoard(TO(move)));
+		assert(Utils::PieceValid(CAPTURED(move)));
+
 		m_moveList->moves[m_moveList->count].move = move;
-		m_moveList->moves[m_moveList->count].score = 0;
+		m_moveList->moves[m_moveList->count].score = MvvLVAScores[CAPTURED(move)][m_board->pieces[FROM(move)]] + 1000000;
 		m_moveList->count++;
 	}
 
 	void MoveGenerator::AddEnPassantMove(int move) {
+		assert(Utils::SquareOnBoard(FROM(move)));
+		assert(Utils::SquareOnBoard(TO(move)));
+
 		m_moveList->moves[m_moveList->count].move = move;
-		m_moveList->moves[m_moveList->count].score = 0;
+		m_moveList->moves[m_moveList->count].score = 105 + 1000000 ;
 		m_moveList->count++;
 	}
 
@@ -152,11 +208,11 @@ namespace BalouxEngine {
 
 				if (m_board->GetEnPassantSquare() != SQ_NONE) {
 					if (square + 9 == m_board->GetEnPassantSquare()) {
-						AddCaptureMove(MOVE(square, square + 9, PieceNone, PieceNone, MOVEFLAGEP));
+						AddEnPassantMove(MOVE(square, square + 9, PieceNone, PieceNone, MOVEFLAGEP));
 					}
 
 					if (square + 11 == m_board->GetEnPassantSquare()) {
-						AddCaptureMove(MOVE(square, square + 11, PieceNone, PieceNone, MOVEFLAGEP));
+						AddEnPassantMove(MOVE(square, square + 11, PieceNone, PieceNone, MOVEFLAGEP));
 					}
 				}
 
@@ -208,11 +264,11 @@ namespace BalouxEngine {
 
 				if (m_board->GetEnPassantSquare() != SQ_NONE) {
 					if (square - 9 == m_board->GetEnPassantSquare()) {
-						AddCaptureMove(MOVE(square, square - 9, PieceNone, PieceNone, MOVEFLAGEP));
+						AddEnPassantMove(MOVE(square, square - 9, PieceNone, PieceNone, MOVEFLAGEP));
 					}
 
 					if (square - 11 == m_board->GetEnPassantSquare()) {
-						AddCaptureMove(MOVE(square, square - 11, PieceNone, PieceNone, MOVEFLAGEP));
+						AddEnPassantMove(MOVE(square, square - 11, PieceNone, PieceNone, MOVEFLAGEP));
 					}
 				}
 			}
@@ -306,6 +362,131 @@ namespace BalouxEngine {
 			piece = LoopNonSlidePiece[pieceIndex++];
 		}
 
+		assert(MoveListOk());
+	}
+
+	void MoveGenerator::GenerateAllCaptures() {
+		assert(m_board->CheckBoard());
+
+		m_moveList->count = 0;
+
+		int pce = PieceNone;
+		int side = m_board->GetSide();
+		int sq = 0; int t_sq = 0;
+		int pceNum = 0;
+		int dir = 0;
+		int index = 0;
+		int pceIndex = 0;
+
+		if (side == White) {
+
+			for (pceNum = 0; pceNum < m_board->pieceNumber[WhitePawn]; ++pceNum) {
+				sq = m_board->pieceList[WhitePawn][pceNum];
+				assert(Utils::SquareOnBoard(sq));
+
+				if (Utils::SquareOnBoard(sq + 9) && PieceCol[m_board->GetPieceAtIndex(sq + 9)] == Black) {
+					AddWhitePawnCaptureMove(sq, sq + 9, m_board->pieces[sq + 9]);
+				}
+				if (Utils::SquareOnBoard(sq + 11) && PieceCol[m_board->pieces[sq + 11]] == Black) {
+					AddWhitePawnCaptureMove(sq, sq + 11, m_board->pieces[sq + 11]);
+				}
+
+				if (m_board->enPassant != SQ_NONE) {
+					if (sq + 9 == m_board->enPassant) {
+						AddEnPassantMove(MOVE(sq, sq + 9, PieceNone, PieceNone, MOVEFLAGEP));
+					}
+					if (sq + 11 == m_board->enPassant) {
+						AddEnPassantMove(MOVE(sq, sq + 11, PieceNone, PieceNone, MOVEFLAGEP));
+					}
+				}
+			}
+
+		}
+		else {
+
+			for (pceNum = 0; pceNum < m_board->pieceNumber[BlackPawn]; ++pceNum) {
+				sq = m_board->pieceList[BlackPawn][pceNum];
+				assert(Utils::SquareOnBoard(sq));
+
+				if (Utils::SquareOnBoard(sq - 9) && PieceCol[m_board->pieces[sq - 9]] == White) {
+					AddBlackPawnCaptureMove(sq, sq - 9, m_board->pieces[sq - 9]);
+				}
+
+				if (Utils::SquareOnBoard(sq - 11) && PieceCol[m_board->pieces[sq - 11]] == White) {
+					AddBlackPawnCaptureMove(sq, sq - 11, m_board->pieces[sq - 11]);
+				}
+				if (m_board->enPassant != SQ_NONE) {
+					if (sq - 9 == m_board->enPassant) {
+						AddEnPassantMove(MOVE(sq, sq - 9, PieceNone, PieceNone, MOVEFLAGEP));
+					}
+					if (sq - 11 == m_board->enPassant) {
+						AddEnPassantMove(MOVE(sq, sq - 11, PieceNone, PieceNone, MOVEFLAGEP));
+					}
+				}
+			}
+		}
+
+		/* Loop for slide pieces */
+		pceIndex = LoopSlideIndex[side];
+		pce = LoopSlidePiece[pceIndex++];
+		while (pce != 0) {
+			assert(Utils::PieceValid(pce));
+
+			for (pceNum = 0; pceNum < m_board->pieceNumber[pce]; ++pceNum) {
+				sq = m_board->pieceList[pce][pceNum];
+				assert(Utils::SquareOnBoard(sq));
+
+				for (index = 0; index < NumDir[pce]; ++index) {
+					dir = PieceDir[pce][index];
+					t_sq = sq + dir;
+
+					while (Utils::SquareOnBoard(t_sq)) {
+						// Black ^ 1 == WHITE       WHITE ^ 1 == Black
+						if (m_board->pieces[t_sq] != PieceNone) {
+							if (PieceCol[m_board->pieces[t_sq]] == (side ^ 1)) {
+								AddCaptureMove(MOVE(sq, t_sq, m_board->pieces[t_sq], PieceNone, 0));
+							}
+							break;
+						}
+						t_sq += dir;
+					}
+				}
+			}
+
+			pce = LoopSlidePiece[pceIndex++];
+		}
+
+		/* Loop for non slide */
+		pceIndex = LoopNonSlideIndex[side];
+		pce = LoopNonSlidePiece[pceIndex++];
+
+		while (pce != 0) {
+			assert(Utils::PieceValid(pce));
+
+			for (pceNum = 0; pceNum < m_board->pieceNumber[pce]; ++pceNum) {
+				sq = m_board->pieceList[pce][pceNum];
+				assert(Utils::SquareOnBoard(sq));
+
+				for (index = 0; index < NumDir[pce]; ++index) {
+					dir = PieceDir[pce][index];
+					t_sq = sq + dir;
+
+					if (!Utils::SquareOnBoard(t_sq)) {
+						continue;
+					}
+
+					// Black ^ 1 == WHITE       WHITE ^ 1 == Black
+					if (m_board->pieces[t_sq] != PieceNone) {
+						if (PieceCol[m_board->pieces[t_sq]] == (side ^ 1)) {
+							AddCaptureMove(MOVE(sq, t_sq, m_board->pieces[t_sq], PieceNone, 0));
+						}
+						continue;
+					}
+				}
+			}
+
+			pce = LoopNonSlidePiece[pceIndex++];
+		}
 		assert(MoveListOk());
 	}
 

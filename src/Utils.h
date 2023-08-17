@@ -3,6 +3,7 @@
 
 namespace BalouxEngine {
 
+	class Board;
 
 	class Utils {
 	public:
@@ -22,6 +23,9 @@ namespace BalouxEngine {
 		inline static int Sq120ToSq64(int sq120) { return m_Sq120ToSq64[sq120]; }
 		inline static  int Sq64ToSq120(int sq64) { return m_Sq64ToSq120[sq64]; }
 
+		static int ParseMove(char* move, Board* board);
+
+		static int GetTimeInMs();
 	private:
 		static int m_Sq120ToSq64[120];
 		static int m_Sq64ToSq120[64];

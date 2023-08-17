@@ -39,13 +39,14 @@ namespace BalouxEngine {
 		m_board->PrintBoard();
 		printf("\nStarting Test To Depth:%d\n", depth);
 		leafNodes = 0;
-		// int start = GetTimeMs();
+		int start = Utils::GetTimeInMs();
+		
 		MoveGenerator moveGen = MoveGenerator(m_board);
 		moveGen.GenerateAllMoves();
 
 		int move;
 		int MoveNum;
-		for (MoveNum = 43; MoveNum < moveGen.GetMoveList()->count; ++MoveNum) {
+		for (MoveNum = 0; MoveNum < moveGen.GetMoveList()->count; ++MoveNum) {
 			move = moveGen.GetMoveList()->moves[MoveNum].move;
 			if (!m_board->MakeMove(move)) {
 				continue;
@@ -58,6 +59,7 @@ namespace BalouxEngine {
 		}
 
 		printf("\nTest Complete : %ld nodes visited\n", leafNodes);
+		std::cout << "Took " << Utils::GetTimeInMs() - start << "ms.\n";
 
 		return;
 	}

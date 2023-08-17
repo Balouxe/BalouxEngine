@@ -6,6 +6,7 @@
 #include "Utils.h"
 #include "Bitboard.h"
 #include "MoveGenerator.h"
+#include "Search.h"
 
 
 namespace BalouxEngine {
@@ -20,6 +21,7 @@ namespace BalouxEngine {
 
 	class Board {
 	public:
+		Board();
 
 		bool MakeMove(int move);
 		void TakeMove();
@@ -41,12 +43,18 @@ namespace BalouxEngine {
 		inline Bitboard GetWhitePawns() const { return pawns[White]; }
 		inline Bitboard GetBlackPawns() const { return pawns[Black]; }
 		inline Bitboard GetBothPawns() const { return pawns[Both]; }
+		inline PVTable& GetPVTable() { return pvTable; }
+		inline int GetWhiteMaterial() const { return material[White]; }
+		inline int GetBlackMaterial() const { return material[Black]; }
 	private:
 		void ClearPiece(const int square);
 		void AddPiece(const int square, const int piece);
 		void MovePiece(const int from, const int to);
 
 		friend class MoveGenerator;
+		friend class Search;
+		friend class PVTable;
+		friend class Evaluation;
 
 		int pieces[BRD_SQ_NUM];
 		Bitboard pawns[3];
@@ -74,6 +82,12 @@ namespace BalouxEngine {
 
 		Undo history[MAXGAMEMOVES];
 
+		PVTable pvTable;
+
+		int searchHistory[13][120];
+		int searchKillers[2][MAXDEPTH];
+	public:
+		int PvArray[MAXDEPTH];
 	};
 
 }

@@ -1,7 +1,14 @@
 #include "Utils.h"
+#include "Board.h"
 
 #include <iostream>
 #include <stdio.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 namespace BalouxEngine {
 
@@ -111,6 +118,60 @@ namespace BalouxEngine {
 			printf("Move:%d > %s (score:%d)\n", index + 1, MoveToString(move), score);
 		}
 		printf("MoveList Total %d Moves:\n\n", list->count);
+	}
+
+	int Utils::ParseMove(char* move, Board* board) {
+		assert(board->CheckBoard());
+
+		if (move[1] > '8' || move[1] < '1') return NOMOVE;
+		if (move[3] > '8' || move[3] < '1') return NOMOVE;
+		if (move[0] > 'h' || move[0] < 'a') return NOMOVE;
+		if (move[2] > 'h' || move[2] < 'a') return NOMOVE;
+
+		int from = FR2SQ(move[0] - 'a', move[1] - '1');
+		int to = FR2SQ(move[2] - 'a', move[3] - '1');
+
+		assert(Utils::SquareOnBoard(from) && Utils::SquareOnBoard(to));
+
+		MoveGenerator moveGen = MoveGenerator(board);
+		moveGen.GenerateAllMoves();
+		int MoveNum = 0;
+		int Move = 0;
+		int PromPce = PieceNone;
+
+		for (MoveNum = 0; MoveNum < moveGen.GetMoveList()->count; ++MoveNum) {
+			Move = moveGen.GetMoveList()->moves[MoveNum].move;
+			if (FROM(Move) == from && TO(Move) == to) {
+				PromPce = PROMOTED(Move);
+				if (PromPce != PieceNone) {
+					if (IsRQ(PromPce) && !IsBQ(PromPce) && move[4] == 'r') {
+						return Move;
+					}
+					else if (!IsRQ(PromPce) && IsBQ(PromPce) && move[4] == 'b') {
+						return Move;
+					}
+					else if (IsRQ(PromPce) && IsBQ(PromPce) && move[4] == 'q') {
+						return Move;
+					}
+					else if (IsKN(PromPce) && move[4] == 'n') {
+						return Move;
+					}
+					continue;
+				}
+				return Move;
+			}
+		}
+
+	}
+
+	int Utils::GetTimeInMs() {
+#ifdef _WIN32
+		return GetTickCount();
+#else
+		struct timeval t;
+		gettimeofday(&t, NULL);
+		return t.tv_sec * 1000 + t.tv_usec / 1000;
+#endif
 	}
 
 }

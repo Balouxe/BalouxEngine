@@ -1,6 +1,8 @@
 #pragma once
 #include "Types.h"
 
+// TODO, later: Implement SEE instead of MvvLVA
+
 namespace BalouxEngine {
 
 	class Board;
@@ -8,7 +10,14 @@ namespace BalouxEngine {
 	class MoveGenerator {
 	public:
 		MoveGenerator(Board* board);
+		~MoveGenerator();
+
 		void GenerateAllMoves();
+		void GenerateAllCaptures();
+
+		static void InitMvvLva();
+
+		bool MoveExists(const int move);
 
 		bool MoveListOk();
 
@@ -27,6 +36,8 @@ namespace BalouxEngine {
 
 		Board* m_board = nullptr;
 		MoveList* m_moveList = nullptr;
+
+		static int MvvLVAScores[13][13];
 	};
 
 }
