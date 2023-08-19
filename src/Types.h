@@ -4,18 +4,21 @@
 
 typedef unsigned long long U64;
 
+#define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 #define BRD_SQ_NUM 120
 #define MAXGAMEMOVES 2048
 #define MAXPOSITIONMOVES 256
 #define NOMOVE 0
 #define MAXDEPTH 64
-#define MATE 29000
-#define INFINITE 30000
+#define MATE (INF_BOUND - MAXDEPTH)
+#define INF_BOUND 30000
 
 extern U64 SetMask[64];
 extern U64 ClearMask[64];
 
 namespace BalouxEngine {
+
+	class Board;
 	
 	struct Move {
 		int move;
@@ -38,11 +41,36 @@ namespace BalouxEngine {
 
 		long nodes;
 
-		bool quit;
-		bool stopped;
+		bool quit = false;
+		bool stopped = false;
 
 		float fh;
 		float fhf;
+	};
+
+	struct SearchThreadData {
+		Board* board;
+		SearchInfo* info;
+	};
+
+	struct HashEntry {
+		U64 posKey;
+		int move;
+		int score;
+		int depth;
+		int flags;
+		int age;
+	};
+
+	enum HashFlags { HF_NONE, HF_ALPHA, HF_BETA, HF_EXACT };
+
+	struct HashTableContainer {
+		HashEntry* pTable;
+		int newWrite;
+		int hit;
+		int cut;
+		int overWrite;
+		int currentAge;
 	};
 
 	enum Piece {
@@ -90,6 +118,17 @@ namespace BalouxEngine {
 	constexpr bool PieceRookQueen[13] = { false, false, false, false, true, true, false, false, false, false, true, true, false };
 	constexpr bool PieceBishopQueen[13] = { false, false, false, true, false, true, false, false, false, true, false, true, false };
 	constexpr bool PieceSlides[13] = { false, false, false, true, true, true, false, false, false, true, true, true, false };
+	constexpr int Mirror64[64] = {
+56	,	57	,	58	,	59	,	60	,	61	,	62	,	63	,
+48	,	49	,	50	,	51	,	52	,	53	,	54	,	55	,
+40	,	41	,	42	,	43	,	44	,	45	,	46	,	47	,
+32	,	33	,	34	,	35	,	36	,	37	,	38	,	39	,
+24	,	25	,	26	,	27	,	28	,	29	,	30	,	31	,
+16	,	17	,	18	,	19	,	20	,	21	,	22	,	23	,
+8	,	9	,	10	,	11	,	12	,	13	,	14	,	15	,
+0	,	1	,	2	,	3	,	4	,	5	,	6	,	7
+	};
+
 
 	// Macros
 
@@ -103,6 +142,8 @@ namespace BalouxEngine {
 #define IsRQ(p) (PieceRookQueen[(p)])
 #define IsKN(p) (PieceKnight[(p)])
 #define IsKi(p) (PieceKing[(p)])
+#define MIRROR64(sq) (Mirror64[(sq)])
+#define INCHECK(s) (isSquareAttacked(KingSq[(s)], (s) ^ 1))
 
 #define FROM(m) ((m) & 0x7F)
 #define TO(m) (((m) >> 7) &0x7F)

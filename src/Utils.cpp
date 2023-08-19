@@ -1,8 +1,10 @@
 #include "Utils.h"
 #include "Board.h"
+#include "Search.h"
 
 #include <iostream>
 #include <stdio.h>
+#include <io.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -17,6 +19,17 @@ namespace BalouxEngine {
 
 	int Utils::FilesBrd[120];
 	int Utils::RanksBrd[120];
+	HashTable* Utils::globalHashTable = nullptr;
+
+	void Utils::InitGlobalHashTable() {
+		delete globalHashTable;
+		globalHashTable = new HashTable();
+		globalHashTable->InitHashTable();
+	}
+
+	void Utils::UninitGlobalHashTable() {
+		delete globalHashTable;
+	}
 
 	void Utils::Init64To120() {
 

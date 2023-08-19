@@ -24,15 +24,19 @@ namespace BalouxEngine {
 		Board();
 
 		bool MakeMove(int move);
+		void MakeNullMove();
 		void TakeMove();
+		void TakeNullMove();
 
 		void ResetBoard();
 		void PrintBoard();
 
+		void MirrorBoard();
+
 		void ParseFEN(std::string FEN);
 
 		void UpdateListsMaterials();
-		bool CheckBoard();
+		bool CheckBoard() const;
 
 		bool isSquareAttacked(const int square, const int side);
 
@@ -43,7 +47,6 @@ namespace BalouxEngine {
 		inline Bitboard GetWhitePawns() const { return pawns[White]; }
 		inline Bitboard GetBlackPawns() const { return pawns[Black]; }
 		inline Bitboard GetBothPawns() const { return pawns[Both]; }
-		inline PVTable& GetPVTable() { return pvTable; }
 		inline int GetWhiteMaterial() const { return material[White]; }
 		inline int GetBlackMaterial() const { return material[Black]; }
 	private:
@@ -53,8 +56,10 @@ namespace BalouxEngine {
 
 		friend class MoveGenerator;
 		friend class Search;
-		friend class PVTable;
+		friend class HashTable;
 		friend class Evaluation;
+		friend class UCI;
+		friend class XBoard;
 
 		int pieces[BRD_SQ_NUM];
 		Bitboard pawns[3];
@@ -81,8 +86,6 @@ namespace BalouxEngine {
 		int castlingPermission;
 
 		Undo history[MAXGAMEMOVES];
-
-		PVTable pvTable;
 
 		int searchHistory[13][120];
 		int searchKillers[2][MAXDEPTH];

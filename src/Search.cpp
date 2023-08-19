@@ -1,120 +1,239 @@
 #include "Search.h"
 #include "Board.h"
 #include "Evaluate.h"
+#include "Hash.h"
 
 namespace BalouxEngine {
 
-	constexpr int PvSize = 0x100000 * 2;
+	constexpr int HashSize = 0x100000 * 16;
 
-	PVTable::PVTable(Board* board) : m_board(board) {}
+	HashTable::HashTable() {
+		table = HashTableContainer();
+	}
 
-	void PVTable::InitPvTable() {
-		numEntries = PvSize / sizeof(PVEntry);
+	void HashTable::InitHashTable() {
+		numEntries = HashSize / sizeof(HashEntry);
 		numEntries -= 2;
-		free(pTable);
-		pTable = (PVEntry*) malloc(numEntries * sizeof(PVEntry));
-		ClearPvTable();
+		free(table.pTable);
+		table.pTable = (HashEntry*) malloc(numEntries * sizeof(HashEntry));
+		ClearHashTable();
 	}
 
-	void PVTable::ClearPvTable() {
-		PVEntry* entry;
+	void HashTable::ClearHashTable() {
+		HashEntry* entry;
 
-		for (entry = pTable; entry < pTable + numEntries; entry++) {
+		for (entry = table.pTable; entry < table.pTable + numEntries; entry++) {
 			entry->posKey = 0ULL;
-			entry->move = 0;
+			entry->move = NOMOVE;
+			entry->depth = 0;
+			entry->score = 0;
+			entry->flags = 0;
+			entry->age = 0;
 		}
+
+		table.currentAge = 0;
+		table.newWrite = 0;
+		table.overWrite = 0;
 	}
 
-	void PVTable::StorePvMove(const int move) {
-		int i = m_board->posKey % numEntries;
+	void HashTable::StoreHashEntry(Board* board, const int move, int score, int flags, int depth) {
+		int i = board->posKey % numEntries;
 		assert(i >= 0 && i <= numEntries - 1);
 
-		pTable[i].move = move;
-		pTable[i].posKey = m_board->posKey;
-	}
+		bool replace = false;
 
-	int PVTable::ProbePvTable() {
-		int i = m_board->posKey % numEntries;
-		assert(i >= 0 && i <= numEntries - 1);
-
-		if (pTable[i].posKey == m_board->posKey) {
-			return pTable[i].move;
+		if (table.pTable[i].posKey == 0) {
+			table.newWrite++;
+			replace = true;
 		}
 		else {
-			return NOMOVE;
+			if (table.pTable[i].age < table.currentAge || table.pTable[i].depth <= depth) {
+				replace = true;
+			}
 		}
+
+		if (replace == false) return;
+
+		if (score > MATE) score += board->ply;
+		else if (score < -MATE) score -= board->ply;
+
+		table.pTable[i].score = score;
+		table.pTable[i].flags = flags;
+		table.pTable[i].posKey = board->posKey;
+		table.pTable[i].depth = depth;
+		table.pTable[i].move = move;
+
 	}
 
-	int PVTable::GetPvLine(const int depth) {
+	int HashTable::ProbeHashEntry(Board* board, int* move, int* score, int alpha, int beta, int depth) {
+		int i = board->posKey % numEntries;
+		assert(i >= 0 && i <= numEntries - 1);
+
+		if (table.pTable[i].posKey == board->posKey) {
+			*move = table.pTable[i].move;
+			if (table.pTable[i].depth >= depth) {
+				table.hit++;
+
+				*score = table.pTable[i].score;
+				if (*score > MATE) *score -= board->ply;
+				else if (*score < -MATE) *score += board->ply;
+
+				switch (table.pTable[i].flags) {
+					case HF_ALPHA:
+						if (*score <= alpha) {
+							*score = alpha;
+							return true;
+						}
+						break;
+					case HF_BETA:
+						if (*score >= beta) {
+							*score = beta;
+							return true;
+						}
+						break;
+					case HF_EXACT:
+						return true;
+						break;
+					default:
+						assert(false);
+						break;
+				}
+			}
+		}
+		
+		return false;
+	}
+
+	int HashTable::GetPvLine(Board* board, const int depth) {
 		assert(depth < MAXDEPTH);
 
-		int move = ProbePvTable();
+		int move = ProbePvMove(board);
 		int count = 0;
 
-		MoveGenerator moveGen(m_board);
+		MoveGenerator moveGen(board);
 
 		while (move != NOMOVE && count < depth) {
 			assert(count < MAXDEPTH);
 
 			if (moveGen.MoveExists(move)) {
-				m_board->MakeMove(move);
-				m_board->PvArray[count++] = move;
+				board->MakeMove(move);
+				board->PvArray[count++] = move;
 			}
 			else {
 				break;
 			}
-			move = ProbePvTable();
+			move = ProbePvMove(board);
 		}
 
-		while (m_board->ply > 0) {
-			m_board->TakeMove();
+		while (board->ply > 0) {
+			board->TakeMove();
 		}
 
 		return count;
 	}
 
+	int HashTable::ProbePvMove(Board* board) {
+
+		int index = board->posKey % Utils::globalHashTable->numEntries;
+		assert(index >= 0 && index <= Utils::globalHashTable->numEntries - 1);
+
+		if (Utils::globalHashTable->table.pTable[index].posKey == board->posKey) {
+			return Utils::globalHashTable->table.pTable[index].move;
+		}
+
+		return NOMOVE;
+	}
+
 	Search::Search(Board* board) : m_board(board){}
+
+	int Search::SearchPosition_Thread(void* data) {
+		SearchThreadData* searchData = (SearchThreadData*)data;
+		Board* board = (Board*)malloc(sizeof(Board));
+
+		memcpy(board, searchData->board, sizeof(Board));
+		Search search = Search(board);
+		search.SetSearchInfo(searchData->info);
+
+		search.SearchPosition();
+
+		free(board);
+		return 0;
+	}
 
 	void Search::SearchPosition() {
 		int bestMove = NOMOVE;
-		int bestScore = -INFINITE;
+		int bestScore = -INF_BOUND;
 		int currentDepth = 0;
 		int pvMoves = 0;
 		int pvNum = 0;
 		ClearForSearch();
 
-		for (currentDepth = 1; currentDepth <= info.depth; ++currentDepth) {
-			bestScore = AlphaBeta(-INFINITE, INFINITE, currentDepth, true);
-			pvMoves = m_board->GetPVTable().GetPvLine(currentDepth);
-			bestMove = m_board->PvArray[0];
+		for (currentDepth = 1; currentDepth <= info->depth; ++currentDepth) {
+			bestScore = AlphaBeta(-INF_BOUND, INF_BOUND, currentDepth, true);
 
-			std::cout << "Depth: " << currentDepth << ", score : " << bestScore << ", move: " << Utils::MoveToString(bestMove) << ", nodes : " << info.nodes << std::endl;
-
-			for (pvNum = 0; pvNum < pvMoves; ++pvNum) {
-				std::cout << Utils::MoveToString(m_board->PvArray[pvNum]) << " ";
+			if (info->stopped == true) {
+				break;
 			}
-			std::cout << "\nOrdering : " << info.fhf / info.fh << "\n";
+
+			pvMoves = Utils::globalHashTable->GetPvLine(m_board, currentDepth);
+			bestMove = m_board->PvArray[0];
+			// std::cout << "Depth: " << currentDepth << ", score : " << bestScore << ", move: " << Utils::MoveToString(bestMove) << ", nodes : " << info->nodes << std::endl;
+			printf("info score cp %d depth %d nodes %ld time %d ",
+				bestScore, currentDepth, info->nodes, Utils::GetTimeInMs() - info->startTime);
+
+			printf("pv");
+			for (pvNum = 0; pvNum < pvMoves; ++pvNum) {
+				printf(" %s", Utils::MoveToString(m_board->PvArray[pvNum]));
+			}
+			// std::cout << "\nOrdering : " << info->fhf / info->fh << "\n";
+			printf("\n");
+
 		}
 
+		printf("bestmove %s\n", Utils::MoveToString(bestMove));
 	}
 
 	int Search::AlphaBeta(int alpha, int beta, int depth, bool doNull) {
 		assert(m_board->CheckBoard());
 
 		if (depth == 0) {
-			// return Quiescence(alpha, beta);
-			info.nodes++;
-			return Evaluation::EvalPosition(m_board);
+			return Quiescence(alpha, beta);
+			// info->nodes++;
+			// return Evaluation::EvalPosition(m_board);
 		}
 
-		info.nodes++;
+		if ((info->nodes & 2047) == 0) {
+			CheckUp();
+		}
 
-		if (isRepetition() || m_board->fiftyMove >= 100) {
+		info->nodes++;
+
+		if ((isRepetition() || m_board->fiftyMove >= 100) && m_board->ply) {
 			return 0;
 		}
 
 		if (m_board->ply > 64) /*[[unlikely]]*/ {
 			return Evaluation::EvalPosition(m_board);
+		}
+
+		bool InCheck = m_board->isSquareAttacked(m_board->KingSq[m_board->m_side], m_board->m_side ^ 1);
+
+		if (InCheck) {
+			depth++;
+		}
+
+		int Score = -INF_BOUND;
+
+		if (doNull && !InCheck && m_board->ply && (m_board->bigPieces[m_board->m_side] > 1) && depth >= 4) {
+			m_board->MakeNullMove();
+			Score = -AlphaBeta(-beta, -beta + 1, depth - 4, false);
+			m_board->TakeNullMove();
+			if (info->stopped) {
+				return 0;
+			}
+			if (Score >= beta && abs(Score) < MATE) {
+				return beta;
+			}
 		}
 
 		MoveGenerator moveGen(m_board);
@@ -124,16 +243,13 @@ namespace BalouxEngine {
 		int legal = 0;
 		int OldAlpha = alpha;
 		int BestMove = NOMOVE;
-		int Score = -INFINITE;
-		int PvMove = m_board->GetPVTable().ProbePvTable();
+		int BestScore = -INF_BOUND;
+		Score = -INF_BOUND;
+		int PvMove = NOMOVE;
 
-		if (PvMove != NOMOVE) {
-			for (moveNum = 0; moveNum < moveGen.GetMoveList()->count; ++moveNum) {
-				if (moveGen.GetMoveList()->moves[moveNum].move == PvMove) {
-					moveGen.GetMoveList()->moves[moveNum].score = 2000000;
-					break;
-				}
-			}
+		if (Utils::globalHashTable->ProbeHashEntry(m_board, &PvMove, &Score, alpha, beta, depth)) {
+			Utils::globalHashTable->table.cut++;
+			return Score;
 		}
 
 		for (moveNum = 0; moveNum < moveGen.GetMoveList()->count; ++moveNum) {
@@ -148,31 +264,40 @@ namespace BalouxEngine {
 			Score = -AlphaBeta(-beta, -alpha, depth - 1, true);
 			m_board->TakeMove();
 
-			if (Score > alpha) {
-				if (Score >= beta) {
-					if (legal == 1) {
-						info.fhf++;
-					}
-					info.fh++;
+			if (info->stopped == true) {
+				return 0;
+			}
 
-					if (!(moveGen.GetMoveList()->moves[moveNum].move & MOVEFLAGCAP)) {
-						m_board->searchKillers[1][m_board->ply] = m_board->searchKillers[0][m_board->ply];
-						m_board->searchKillers[0][m_board->ply] = moveGen.GetMoveList()->moves[moveNum].move;
-					}
-
-					return beta;
-				}
-				alpha = Score;
+			if (Score > BestScore) {
+				BestScore = Score;
 				BestMove = moveGen.GetMoveList()->moves[moveNum].move;
-				if (!(moveGen.GetMoveList()->moves[moveNum].move & MOVEFLAGCAP)) {
-					m_board->searchHistory[m_board->pieces[FROM(BestMove)]][TO(BestMove)] += depth;
+				if (Score > alpha) {
+					if (Score >= beta) {
+						if (legal == 1) {
+							info->fhf++;
+						}
+						info->fh++;
+
+						if (!(moveGen.GetMoveList()->moves[moveNum].move & MOVEFLAGCAP)) {
+							m_board->searchKillers[1][m_board->ply] = m_board->searchKillers[0][m_board->ply];
+							m_board->searchKillers[0][m_board->ply] = moveGen.GetMoveList()->moves[moveNum].move;
+						}
+
+						Utils::globalHashTable->StoreHashEntry(m_board, BestMove, beta, HF_BETA, depth);
+
+						return beta;
+					}
+					alpha = Score;
+					if (!(moveGen.GetMoveList()->moves[moveNum].move & MOVEFLAGCAP)) {
+						m_board->searchHistory[m_board->pieces[FROM(BestMove)]][TO(BestMove)] += depth;
+					}
 				}
 			}
 
 		}
 
 		if (legal == 0) {
-			if (m_board->isSquareAttacked(m_board->KingSq[m_board->m_side], m_board->m_side ^ 1)) {
+			if (InCheck) {
 				return -MATE + m_board->ply;
 			}
 			else {
@@ -181,7 +306,10 @@ namespace BalouxEngine {
 		}
 
 		if (alpha != OldAlpha) {
-			m_board->GetPVTable().StorePvMove(BestMove);
+			Utils::globalHashTable->StoreHashEntry(m_board, BestMove, BestScore, HF_EXACT, depth);
+		}
+		else {
+			Utils::globalHashTable->StoreHashEntry(m_board, BestMove, alpha, HF_ALPHA, depth);
 		}
 
 		return alpha;
@@ -189,7 +317,12 @@ namespace BalouxEngine {
 
 	int Search::Quiescence(int alpha, int beta) {
 		assert(m_board->CheckBoard());
-		info.nodes++;
+
+		if ((info->nodes & 2047) == 0) {
+			CheckUp();
+		}
+
+		info->nodes++;
 
 		if (isRepetition() || m_board->fiftyMove >= 100) {
 			return 0;
@@ -216,9 +349,8 @@ namespace BalouxEngine {
 		int legal = 0;
 		int OldAlpha = alpha;
 		int BestMove = NOMOVE;
-		Score = -INFINITE;
-		int PvMove = m_board->GetPVTable().ProbePvTable();
-
+		Score = -INF_BOUND;
+		// int PvMove = m_board->GetPVTable().ProbePvTable();
 
 		for (moveNum = 0; moveNum < moveGen.GetMoveList()->count; ++moveNum) {
 
@@ -232,12 +364,16 @@ namespace BalouxEngine {
 			Score = -Quiescence(-beta, -alpha);
 			m_board->TakeMove();
 
+			if (info->stopped == true) {
+				return 0;
+			}
+
 			if (Score > alpha) {
 				if (Score >= beta) {
 					if (legal == 1) {
-						info.fhf++;
+						info->fhf++;
 					}
-					info.fh++;
+					info->fh++;
 
 					return beta;
 				}
@@ -245,10 +381,6 @@ namespace BalouxEngine {
 				BestMove = moveGen.GetMoveList()->moves[moveNum].move;
 			}
 
-		}
-
-		if (alpha != OldAlpha) {
-			m_board->GetPVTable().StorePvMove(BestMove);
 		}
 
 		return alpha;
@@ -270,18 +402,25 @@ namespace BalouxEngine {
 			}
 		}
 
-		m_board->GetPVTable().ClearPvTable();
+		Utils::globalHashTable->table.overWrite = 0;
+		Utils::globalHashTable->table.hit = 0;
+		Utils::globalHashTable->table.cut = 0;
+
 		m_board->ply = 0;
 
-		info.startTime = Utils::GetTimeInMs();
-		info.stopped = false;
-		info.nodes = 0;
-		info.fh = 0.0f;
-		info.fhf = 0.0f;
+		info->startTime = Utils::GetTimeInMs();
+		info->stopped = false;
+		info->nodes = 0;
+		info->fh = 0.0f;
+		info->fhf = 0.0f;
+		Utils::globalHashTable->table.currentAge++;
 	}
 
 	void Search::CheckUp() {
 		// checkup
+		if (info->timeSet == true && Utils::GetTimeInMs() > info->endTime) {
+			info->stopped = true;
+		}
 	}
 
 	bool Search::isRepetition() {
@@ -302,7 +441,7 @@ namespace BalouxEngine {
 		int bestScore = 0;
 		int bestNum = moveNum;
 
-		for (i = 0; i < moveList->count; ++i) {
+		for (i = moveNum; i < moveList->count; ++i) {
 			if (moveList->moves[i].score > bestScore) {
 				bestScore = moveList->moves[i].score;
 				bestNum = i;

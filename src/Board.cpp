@@ -15,7 +15,7 @@ const int KingDir[8] = { -1, -10, 1, 10, -9, -11, 9, 11 };
 
 namespace BalouxEngine {
 
-	Board::Board() : pvTable(PVTable(this)) {}
+	Board::Board() {}
 
 	void Board::ResetBoard() {
 		int i = 0;
@@ -188,6 +188,48 @@ namespace BalouxEngine {
 
 	}
 
+	void Board::MirrorBoard() {
+		int tempPiecesArray[64];
+		int tempSide = m_side ^ 1;
+		int SwapPiece[13] = { PieceNone, BlackPawn, BlackKnight, BlackBishop, BlackRook, BlackQueen, BlackKing, WhitePawn, WhiteKnight, WhiteBishop, WhiteRook, WhiteQueen, WhiteKing };
+		int tempCastlePerm = 0;
+		int tempEnPassant = SQ_NONE;
+
+		int sq, tp;
+
+		if (castlingPermission & WHITE_OO) tempCastlePerm |= BLACK_OO;
+		if (castlingPermission & WHITE_OOO) tempCastlePerm |= BLACK_OOO;
+
+		if (castlingPermission & BLACK_OO) tempCastlePerm |= WHITE_OO;
+		if (castlingPermission & BLACK_OOO) tempCastlePerm |= WHITE_OOO;
+
+		if (enPassant != SQ_NONE) {
+			tempEnPassant = SQ120(Mirror64[SQ64(enPassant)]);
+		}
+
+		for (sq = 0; sq < 64; sq++) {
+			tempPiecesArray[sq] = pieces[SQ120(Mirror64[sq])];
+		}
+
+		ResetBoard();
+
+		for (sq = 0; sq < 64; sq++) {
+			tp = SwapPiece[tempPiecesArray[sq]];
+			pieces[SQ120(sq)] = tp;
+		}
+
+		m_side = tempSide;
+		castlingPermission = tempCastlePerm;
+		enPassant = tempEnPassant;
+
+		posKey = Hash::GeneratePosKey(this);
+
+		UpdateListsMaterials();
+
+		assert(CheckBoard());
+	}
+
+
 	void Board::UpdateListsMaterials() {
 		int piece, sq, index, colour;
 
@@ -227,7 +269,7 @@ namespace BalouxEngine {
 	
 	}
 
-	bool Board::CheckBoard() {
+	bool Board::CheckBoard() const {
 		int t_pieceNumber[13] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 		int t_bigPieces[2] = { 0, 0 };
 		int t_majorPieces[2] = { 0, 0 };
@@ -631,6 +673,48 @@ namespace BalouxEngine {
 
 		return true;
 	}
+
+	void Board::MakeNullMove() {
+		assert(CheckBoard());
+		assert(!INCHECK(m_side));
+
+		ply++;
+		history[hisPly].posKey = posKey;
+
+		if (enPassant != SQ_NONE) HASH_EP;
+
+		history[hisPly].castlingPerm = castlingPermission;
+		history[hisPly].move = NOMOVE ;
+		history[hisPly].fiftyMove = fiftyMove;
+		history[hisPly].enPassant = enPassant;
+		enPassant = SQ_NONE;
+
+		m_side ^= 1;
+		hisPly++;
+		HASH_SIDE;
+
+		assert(CheckBoard());
+	}
+
+	void Board::TakeNullMove() {
+		assert(CheckBoard());
+
+		ply--;
+		hisPly--;
+
+		if (enPassant != SQ_NONE) HASH_EP;
+
+		castlingPermission = history[hisPly].castlingPerm;
+		fiftyMove = history[hisPly].fiftyMove;
+		enPassant = history[hisPly].enPassant;
+
+		if (enPassant != SQ_NONE) HASH_EP;
+		m_side ^= 1;
+		HASH_SIDE;
+
+		assert(CheckBoard());
+	}
+
 
 	void Board::TakeMove() {
 

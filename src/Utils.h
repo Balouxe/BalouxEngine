@@ -4,11 +4,14 @@
 namespace BalouxEngine {
 
 	class Board;
+	class HashTable;
 
 	class Utils {
 	public:
 		static void Init64To120();
 		static void InitFilesRanksBrd();
+		static void InitGlobalHashTable();
+		static void UninitGlobalHashTable();
 
 		static char* SquareToString(const int square);
 		static char* MoveToString(const int move);
@@ -32,6 +35,8 @@ namespace BalouxEngine {
 	public:
 		static int FilesBrd[120];
 		static int RanksBrd[120];
+
+		static HashTable* globalHashTable;
 	};
 
 }
